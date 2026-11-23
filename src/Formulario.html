@@ -102,7 +102,8 @@
       if (c.tipo === 'lista') {
         input = el('select', { name: c.nome });
         input.appendChild(el('option', { value: '' }, '—'));
-        (c.opcoes || []).forEach(function (o) { input.appendChild(el('option', { value: o }, o)); });
+        var lista = c.dependeDe ? subDe(valores ? valores[c.dependeDe] : '') : (c.opcoes || []);
+        lista.forEach(function (o) { input.appendChild(el('option', { value: o }, o)); });
         input.value = v || '';
       } else {
         var tipos = { email: 'email', data: 'date', mes: 'month', inteiro: 'number', dia: 'number', percentual: 'text', moeda: 'text', moeda_sinal: 'text' };
@@ -117,6 +118,22 @@
       if (c.obrigatorio) input.required = true;
       f.appendChild(input);
     });
+    // subcategoria acompanha a categoria escolhida
+    def.campos.forEach(function (c) {
+      if (!c.dependeDe) return;
+      var pai = f.querySelector('[name="' + c.dependeDe + '"]');
+      var filho = f.querySelector('[name="' + c.nome + '"]');
+      pai.addEventListener('change', function () { preencherLista(filho, subDe(pai.value), ''); });
+    });
+  }
+
+  function subDe(categoria) { return ((def && def.subcategoriasPor) || {})[categoria] || []; }
+
+  function preencherLista(sel, opcoes, valor) {
+    sel.innerHTML = '';
+    sel.appendChild(el('option', { value: '' }, '—'));
+    opcoes.forEach(function (o) { sel.appendChild(el('option', { value: o }, o)); });
+    sel.value = valor || '';
   }
 
   function coletar() {
@@ -168,7 +185,7 @@
     document.getElementById('salvar').textContent = 'Processar';
     var t = el('table');
     var h = el('tr');
-    ['Ação', 'Data', 'Descrição', 'Valor', 'Tipo', 'Conta/Cartão', 'Categoria', 'Centro de custo'].forEach(function (x) { h.appendChild(el('th', {}, x)); });
+    ['Ação', 'Data', 'Descrição', 'Valor', 'Tipo', 'Conta/Cartão', 'Categoria', 'Subcategoria', 'Centro de custo'].forEach(function (x) { h.appendChild(el('th', {}, x)); });
     t.appendChild(h);
     d.pendentes.forEach(function (p) {
       var tr = el('tr', { 'data-id': p.ID });
@@ -180,7 +197,11 @@
       tr.appendChild(el('td', { 'class': 'valor' }, 'R$ ' + Number(p.Valor).toFixed(2).replace('.', ',')));
       tr.appendChild(el('td', {}, p.Tipo));
       tr.appendChild(el('td', {}, p['Conta/Cartão']));
-      tr.appendChild(celulaLista('cat', d.categorias, p.Categoria));
+      var tdCat = celulaLista('cat', d.categorias, p.Categoria);
+      var tdSub = celulaLista('sub', subDe(p.Categoria), p.Subcategoria);
+      tdCat.querySelector('select').addEventListener('change', function (e) { preencherLista(tdSub.querySelector('select'), subDe(e.target.value), ''); });
+      tr.appendChild(tdCat);
+      tr.appendChild(tdSub);
       tr.appendChild(celulaLista('cc', d.centros, p['Centro de custo']));
       t.appendChild(tr);
     });
@@ -202,7 +223,7 @@
     document.querySelectorAll('tr[data-id]').forEach(function (tr) {
       var acao = tr.querySelector('.acao').value;
       if (!acao) return;
-      r.push({ ID: tr.getAttribute('data-id'), acao: acao, Categoria: tr.querySelector('.cat').value, 'Centro de custo': tr.querySelector('.cc').value });
+      r.push({ ID: tr.getAttribute('data-id'), acao: acao, Categoria: tr.querySelector('.cat').value, Subcategoria: tr.querySelector('.sub').value, 'Centro de custo': tr.querySelector('.cc').value });
     });
     return r;
   }

@@ -15,9 +15,11 @@ const PRIORIDADES = ['Alta', 'Média', 'Baixa'];
 const STATUS_COMPRA = ['Planejada', 'Comprada', 'Cancelada'];
 const STATUS_IMPORT = ['Pendente', 'Aprovado', 'Descartado', 'Duplicado'];
 const STATUS_RELATORIO = ['Pendente', 'Enviado', 'Erro'];
+/** Frequência das compras: intervalo em meses entre uma compra e a próxima (0 = só uma vez). */
+const FREQUENCIAS = { 'Única': 0, 'Mensal': 1, 'Trimestral': 3, 'Semestral': 6, 'Anual': 12 };
 
 /**
- * As 19 abas do sistema (17 visíveis + Relatorios e Log ocultas).
+ * As 20 abas do sistema (18 visíveis + Relatorios e Log ocultas).
  * tipo "dados": tabela com cabeçalho na linha 1, gravada pelo menu.
  * tipo "relatorio": montada pelo script a cada atualização.
  */
@@ -28,16 +30,17 @@ const ABAS = {
   Cartoes:            { tipo: 'dados', cor: '#5f6368', cabecalho: ['Cartão', 'Dia fechamento', 'Dia vencimento', 'Limite', 'Ativo'] },
   Contas:             { tipo: 'dados', cor: '#5f6368', cabecalho: ['Conta', 'Tipo', 'Saldo atual', 'Atualizado em', 'Ativa'] },
   Centros_Custo:      { tipo: 'dados', cor: '#5f6368', cabecalho: ['Centro de custo', 'Descrição', 'Ativo'] },
-  Categorias:         { tipo: 'dados', cor: '#f9ab00', cabecalho: ['Categoria', 'Tipo', 'Meta mensal', 'Centro de custo', 'Ativa'] },
-  Lancamentos:        { tipo: 'dados', cor: '#188038', cabecalho: ['ID', 'Data', 'Descrição', 'Valor', 'Tipo', 'Categoria', 'Centro de custo', 'Conta/Cartão', 'Parcela', 'Mês fatura', 'Origem', 'Criado em'] },
-  Fixos:              { tipo: 'dados', cor: '#188038', cabecalho: ['Descrição', 'Tipo', 'Valor', 'Categoria', 'Centro de custo', 'Conta/Cartão', 'Dia', 'Início', 'Fim', 'Ativo'] },
-  Compras_Futuras:    { tipo: 'dados', cor: '#f9ab00', cabecalho: ['Item', 'Valor estimado', 'Prioridade', 'Mês desejado', 'Parcelas máx', 'Categoria', 'Status', 'Observação'] },
+  Categorias:         { tipo: 'dados', cor: '#f9ab00', cabecalho: ['Categoria', 'Tipo', 'Subcategorias', 'Meta mensal', 'Centro de custo', 'Ativa'] },
+  Lancamentos:        { tipo: 'dados', cor: '#188038', cabecalho: ['ID', 'Data', 'Descrição', 'Valor', 'Tipo', 'Categoria', 'Subcategoria', 'Centro de custo', 'Conta/Cartão', 'Parcela', 'Mês fatura', 'Origem', 'Criado em'] },
+  Fixos:              { tipo: 'dados', cor: '#188038', cabecalho: ['Descrição', 'Tipo', 'Valor', 'Categoria', 'Subcategoria', 'Centro de custo', 'Conta/Cartão', 'Dia', 'Início', 'Fim', 'Ativo'] },
+  Compras_Futuras:    { tipo: 'dados', cor: '#f9ab00', cabecalho: ['Item', 'Valor estimado', 'Prioridade', 'Frequência', 'Mês desejado', 'Parcelas máx', 'Categoria', 'Subcategoria', 'Onde comprar', 'Status', 'Observação'] },
   Aporte_Reserva:     { tipo: 'dados', cor: '#9334e6', cabecalho: ['Mês', 'Aporte', 'Reserva antes', 'Para reserva', 'Reserva depois', 'Para metas', 'Registrado em'] },
   Metas_Investimento: { tipo: 'dados', cor: '#9334e6', cabecalho: ['Meta', 'Valor alvo', '% do aporte', 'Acumulado', 'Prazo', 'Ativa'] },
-  Import_Staging:     { tipo: 'dados', cor: '#e8710a', cabecalho: ['ID', 'Data', 'Descrição', 'Valor', 'Tipo', 'Categoria', 'Centro de custo', 'Conta/Cartão', 'Origem', 'Status', 'Observação', 'Importado em'] },
+  Import_Staging:     { tipo: 'dados', cor: '#e8710a', cabecalho: ['ID', 'Data', 'Descrição', 'Valor', 'Tipo', 'Categoria', 'Subcategoria', 'Centro de custo', 'Conta/Cartão', 'Origem', 'Status', 'Observação', 'Importado em'] },
   Orcado_Realizado:   { tipo: 'relatorio', cor: '#d93025' },
   Projecao_Caixa:     { tipo: 'relatorio', cor: '#d93025' },
   Calendario_Compras: { tipo: 'relatorio', cor: '#d93025' },
+  Parcelas:           { tipo: 'relatorio', cor: '#d93025' },
   Alertas:            { tipo: 'dados', cor: '#d93025', cabecalho: ['Mês', 'Categoria', 'Nível', 'Realizado', 'Meta', 'Enviado em'] },
   Relatorios:         { tipo: 'dados', oculta: true, cabecalho: ['ID', 'Criado em', 'Assunto', 'Corpo', 'Destinatário', 'Status', 'Enviado em', 'Erro'] },
   Log:                { tipo: 'dados', oculta: true, cabecalho: ['Data', 'Ação', 'Detalhe'] }
@@ -59,16 +62,55 @@ const CONFIG_PADRAO = [
   ['alerta_pct2', 100, 'Segundo alerta de orçamento (% da meta)']
 ];
 
-/** Categorias que já vêm cadastradas. */
+/** Categorias que já vêm cadastradas: [categoria, tipo, subcategorias]. */
 const CATEGORIAS_PADRAO = [
-  ['Moradia', 'Saída'], ['Condomínio', 'Saída'], ['Contas da casa', 'Saída'],
-  ['Mercado', 'Saída'], ['Alimentação fora', 'Saída'], ['Transporte', 'Saída'],
-  ['Saúde', 'Saída'], ['Educação', 'Saída'], ['Lazer', 'Saída'],
-  ['Vestuário', 'Saída'], ['Beleza e cuidados', 'Saída'], ['Assinaturas', 'Saída'],
-  ['Presentes', 'Saída'], ['Viagem', 'Saída'], ['Impostos e taxas', 'Saída'],
-  ['Casa e manutenção', 'Saída'], ['Pets', 'Saída'], ['Outros', 'Saída'],
-  ['Salário', 'Entrada'], ['Renda extra', 'Entrada'], ['Rendimentos', 'Entrada'],
-  ['Reembolsos', 'Entrada']
+  ['Moradia', 'Saída', 'Aluguel, Condomínio, Contas de casa'],
+  ['Alimentação', 'Saída', 'Mercado, Feira, Outros'],
+  ['Lazer', 'Saída', 'Saídas, Alimentação fora, Outros'],
+  ['Educação', 'Saída', 'USP, Cursos'],
+  ['Compras', 'Saída', 'Roupas, Sapatos, Acessórios, Presentes, Casa e eletro, Estética, Outros'],
+  ['Transporte', 'Saída', 'Uber, Outros'],
+  ['Saúde', 'Saída', 'Médicos, Esporte, Remédios, Outros'],
+  ['Assinaturas', 'Saída', ''],
+  ['Pipa', 'Saída', 'Veterinário, Vacinas, Ração, Outros'],
+  ['Impostos', 'Saída', ''],
+  ['Dívidas', 'Saída', 'Imposto, USP'],
+  ['Outros', 'Saída', ''],
+  ['Salário', 'Entrada', ''],
+  ['Ajuda de custo', 'Entrada', ''],
+  ['Aluguel quarto', 'Entrada', ''],
+  ['Aluguel vaga', 'Entrada', ''],
+  ['AX Marketing', 'Entrada', ''],
+  ['Rendimentos', 'Entrada', 'XP'],
+  ['Cashback', 'Entrada', 'Nubank, C6 Black'],
+  ['Outras entradas', 'Entrada', '']
+];
+
+/**
+ * Custos fixos que já vêm cadastrados (começam no mês da instalação).
+ * Dívidas: 4 meses atrasados de imposto e de USP, pagos um por mês nos próximos 4 meses.
+ * [descrição, tipo, valor, categoria, subcategoria, meses (vazio = sem fim)]
+ */
+const FIXOS_PADRAO = [
+  ['Aluguel vaga', 'Entrada', 200, 'Aluguel vaga', '', ''],
+  ['Tênis', 'Saída', 500, 'Saúde', 'Esporte', ''],
+  ['USP', 'Saída', 550, 'Educação', 'USP', ''],
+  ['Imposto', 'Saída', 780, 'Impostos', '', ''],
+  ['Dívida: imposto atrasado', 'Saída', 780, 'Dívidas', 'Imposto', 4],
+  ['Dívida: USP atrasada', 'Saída', 550, 'Dívidas', 'USP', 4]
+];
+
+/** Lista de compras que já vem cadastrada: [item, valor, prioridade, frequência, categoria, subcategoria]. */
+const COMPRAS_PADRAO = [
+  ['Micro-ondas', '', 'Média', 'Única', 'Compras', 'Casa e eletro'],
+  ['Airfryer', '', 'Média', 'Única', 'Compras', 'Casa e eletro'],
+  ['Robô aspirador', '', 'Baixa', 'Única', 'Compras', 'Casa e eletro'],
+  ['Botox', 1200, 'Média', 'Semestral', 'Compras', 'Estética'],
+  ['Boca', 1500, 'Média', 'Anual', 'Compras', 'Estética'],
+  ['Roupas', '', 'Baixa', 'Única', 'Compras', 'Roupas'],
+  ['Sapatos', '', 'Baixa', 'Única', 'Compras', 'Sapatos'],
+  ['Veterinário Pipa', '', 'Alta', 'Única', 'Pipa', 'Veterinário'],
+  ['Vacinas Pipa', '', 'Alta', 'Anual', 'Pipa', 'Vacinas']
 ];
 
 const CENTROS_PADRAO = [['Pessoal', 'Gastos pessoais e da casa']];
@@ -131,8 +173,9 @@ const FORMULARIOS = {
       { nome: 'Valor', tipo: 'moeda', obrigatorio: true, positivo: true },
       { nome: 'Tipo', tipo: 'lista', opcoes: TIPOS_LANCAMENTO, obrigatorio: true },
       { nome: 'Categoria', tipo: 'lista', fonte: 'categorias' },
+      { nome: 'Subcategoria', tipo: 'lista', fonte: 'subcategorias', dependeDe: 'Categoria' },
       { nome: 'Centro de custo', tipo: 'lista', fonte: 'centros' },
-      { nome: 'Conta/Cartão', tipo: 'lista', fonte: 'contasECartoes', obrigatorio: true },
+      { nome: 'Conta/Cartão', tipo: 'lista', fonte: 'contasECartoes', obrigatorio: true, rotulo: 'Conta ou cartão da compra' },
       { nome: 'Parcelas', tipo: 'inteiro', min: 1, max: 48, padrao: 1, rotulo: 'Parcelas (só cartão)' }
     ]
   },
@@ -143,8 +186,9 @@ const FORMULARIOS = {
       { nome: 'Tipo', tipo: 'lista', opcoes: ['Entrada', 'Saída'], obrigatorio: true },
       { nome: 'Valor', tipo: 'moeda', obrigatorio: true, positivo: true },
       { nome: 'Categoria', tipo: 'lista', fonte: 'categorias', obrigatorio: true },
+      { nome: 'Subcategoria', tipo: 'lista', fonte: 'subcategorias', dependeDe: 'Categoria' },
       { nome: 'Centro de custo', tipo: 'lista', fonte: 'centros' },
-      { nome: 'Conta/Cartão', tipo: 'lista', fonte: 'contasECartoes' },
+      { nome: 'Conta/Cartão', tipo: 'lista', fonte: 'contasECartoes', rotulo: 'Conta ou cartão' },
       { nome: 'Dia', tipo: 'dia', obrigatorio: true },
       { nome: 'Início', tipo: 'mes', obrigatorio: true },
       { nome: 'Fim', tipo: 'mes', rotulo: 'Fim (vazio = sem fim)' },
@@ -156,6 +200,7 @@ const FORMULARIOS = {
     campos: [
       { nome: 'Categoria', tipo: 'texto', obrigatorio: true },
       { nome: 'Tipo', tipo: 'lista', opcoes: ['Saída', 'Entrada'], obrigatorio: true },
+      { nome: 'Subcategorias', tipo: 'texto', rotulo: 'Subcategorias (separe por vírgula)' },
       { nome: 'Meta mensal', tipo: 'moeda' },
       { nome: 'Centro de custo', tipo: 'lista', fonte: 'centros' },
       { nome: 'Ativa', tipo: 'simnao', padrao: 'Sim' }
@@ -163,13 +208,17 @@ const FORMULARIOS = {
   },
   compras: {
     titulo: 'Compras futuras', aba: 'Compras_Futuras', modo: 'upsert', chave: 'Item',
+    ajuda: 'Compras que se repetem (ex.: Botox 2x ao ano = Semestral) entram no calendário todas as vezes.',
     campos: [
       { nome: 'Item', tipo: 'texto', obrigatorio: true },
-      { nome: 'Valor estimado', tipo: 'moeda', obrigatorio: true, positivo: true },
+      { nome: 'Valor estimado', tipo: 'moeda', rotulo: 'Valor estimado (vazio = ainda não sei)' },
       { nome: 'Prioridade', tipo: 'lista', opcoes: PRIORIDADES, obrigatorio: true },
-      { nome: 'Mês desejado', tipo: 'mes' },
+      { nome: 'Frequência', tipo: 'lista', opcoes: Object.keys(FREQUENCIAS), padrao: 'Única' },
+      { nome: 'Mês desejado', tipo: 'mes', rotulo: 'Mês desejado (ou da primeira vez)' },
       { nome: 'Parcelas máx', tipo: 'inteiro', min: 1, max: 48 },
       { nome: 'Categoria', tipo: 'lista', fonte: 'categorias' },
+      { nome: 'Subcategoria', tipo: 'lista', fonte: 'subcategorias', dependeDe: 'Categoria' },
+      { nome: 'Onde comprar', tipo: 'texto', rotulo: 'Onde comprar (loja ou site)' },
       { nome: 'Status', tipo: 'lista', opcoes: STATUS_COMPRA, padrao: 'Planejada' },
       { nome: 'Observação', tipo: 'texto' }
     ]
