@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #202124; margin: 0; padding: 16px; }
+  p.desc { color: #5f6368; margin: 0 0 12px; }
+  .campo { margin-bottom: 12px; }
+  label { display: block; font-weight: bold; margin-bottom: 4px; }
+  label .obrig { color: #c5221f; }
+  input[type=text], input[type=number], input[type=date], input[type=email], input[type=url], select, textarea {
+    width: 100%; box-sizing: border-box; padding: 7px; border: 1px solid #dadce0; border-radius: 4px; font-size: 13px; }
+  textarea { min-height: 64px; }
+  .ajuda { color: #5f6368; font-size: 11.5px; margin-top: 3px; }
+  .barra { display: flex; gap: 8px; margin-top: 16px; position: sticky; bottom: 0; background: #fff; padding-top: 8px; }
+  button { padding: 8px 16px; border-radius: 4px; border: 1px solid #dadce0; background: #fff; cursor: pointer; font-size: 13px; }
+  button.primario { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+  button:disabled { opacity: .6; cursor: default; }
+  #msg { margin-top: 10px; padding: 8px; border-radius: 4px; display: none; }
+  #msg.ok { display: block; background: #e6f4ea; color: #137333; }
+  #msg.erro { display: block; background: #fce8e6; color: #c5221f; }
+  .existente { background: #f1f3f4; padding: 10px; border-radius: 4px; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+  <p class="desc" id="desc">Carregando...</p>
+  <div id="existente" class="existente" style="display:none">
+    <label for="sel-existente">Editar um já cadastrado</label>
+    <select id="sel-existente"><option value="">(novo)</option></select>
+  </div>
+  <form id="form" onsubmit="return false"></form>
+  <div id="msg"></div>
+  <div class="barra">
+    <button class="primario" id="salvar" onclick="salvar(false)">Salvar</button>
+    <button id="salvar-novo" onclick="salvar(true)" style="display:none">Salvar e incluir outro</button>
+    <button onclick="google.script.host.close()">Fechar</button>
+  </div>
+
+<script>
+  var FORM_ID = <?= formId ?>;
+  var DEF = null;
+
+  function el(tag, attrs, txt) {
+    var e = document.createElement(tag);
+    for (var k in (attrs || {})) e.setAttribute(k, attrs[k]);
+    if (txt !== undefined) e.textContent = txt;
+    return e;
+  }
+
+  function desenhar(def) {
+    DEF = def;
+    document.getElementById('desc').textContent = def.descricao;
+    var form = document.getElementById('form');
+    form.innerHTML = '';
+    def.campos.forEach(function (c, i) {
+      var box = el('div', { 'class': 'campo' });
+      var id = 'f' + i;
+      var lab = el('label', { 'for': id }, c.rotulo + ' ');
+      if (c.obrig) lab.appendChild(el('span', { 'class': 'obrig' }, '*'));
+      box.appendChild(lab);
+      var inp;
+      if (c.tipo === 'selecao') {
+        inp = el('select', { id: id });
+        if (!c.obrig) inp.appendChild(el('option', { value: '' }, ''));
+        (c.opcoes || []).forEach(function (o) { if (o !== '') inp.appendChild(el('option', { value: o }, o)); });
+      } else if (c.tipo === 'textarea') {
+        inp = el('textarea', { id: id });
+      } else if (c.tipo === 'checkbox') {
+        inp = el('input', { id: id, type: 'checkbox' });
+      } else {
+        var tipos = { data: 'date', email: 'email', url: 'url', moeda: 'number', numero: 'number', inteiro: 'number', percentual: 'number' };
+        inp = el('input', { id: id, type: tipos[c.tipo] || 'text' });
+        if (c.tipo === 'moeda') inp.setAttribute('step', '0.01');
+        if (c.tipo === 'percentual') inp.setAttribute('step', '0.1');
+        if (c.tipo === 'inteiro') inp.setAttribute('step', '1');
+        if (c.tipo === 'sugestao') {
+          var dl = el('datalist', { id: id + '-lista' });
+          (c.opcoes || []).forEach(function (o) { dl.appendChild(el('option', { value: o })); });
+          box.appendChild(dl);
+          inp.setAttribute('list', id + '-lista');
+        }
+      }
+      inp.setAttribute('data-nome', c.nome);
+      box.appendChild(inp);
+      if (c.ajuda) box.appendChild(el('div', { 'class': 'ajuda' }, c.ajuda));
+      form.appendChild(box);
+    });
+
+    if (def.modo === 'config') preencher(def.valores);
+    else preencher(null);
+
+    if (def.modo === 'upsert' && def.existentes && def.existentes.length) {
+      var sel = document.getElementById('sel-existente');
+      def.existentes.forEach(function (e, i) { sel.appendChild(el('option', { value: String(i) }, e[def.chave])); });
+      sel.onchange = function () { preencher(sel.value === '' ? null : def.existentes[Number(sel.value)]); };
+      document.getElementById('existente').style.display = 'block';
+    }
+    if (def.modo !== 'config') document.getElementById('salvar-novo').style.display = 'inline-block';
+  }
+
+  function preencher(valores) {
+    DEF.campos.forEach(function (c, i) {
+      var inp = document.getElementById('f' + i);
+      var v = valores ? valores[c.nome] : c.padrao;
+      if (v === undefined || v === null) v = '';
+      if (c.tipo === 'checkbox') inp.checked = (v === true || v === 'true');
+      else inp.value = v;
+    });
+  }
+
+  function coletar() {
+    var dados = {};
+    DEF.campos.forEach(function (c, i) {
+      var inp = document.getElementById('f' + i);
+      dados[c.nome] = (c.tipo === 'checkbox') ? inp.checked : inp.value;
+    });
+    return dados;
+  }
+
+  function mostrar(tipo, texto) {
+    var m = document.getElementById('msg');
+    m.className = tipo; m.textContent = texto;
+  }
+
+  function salvar(outro) {
+    var bt = document.getElementById('salvar');
+    bt.disabled = true;
+    mostrar('ok', 'Salvando...');
+    google.script.run
+      .withSuccessHandler(function (txt) {
+        bt.disabled = false;
+        mostrar('ok', txt);
+        if (outro) { preencher(null); document.getElementById('sel-existente').value = ''; }
+        else setTimeout(function () { google.script.host.close(); }, 900);
+      })
+      .withFailureHandler(function (err) {
+        bt.disabled = false;
+        mostrar('erro', (err && err.message) ? err.message : String(err));
+      })
+      .salvarFormulario(FORM_ID, coletar());
+  }
+
+  google.script.run
+    .withSuccessHandler(desenhar)
+    .withFailureHandler(function (err) { mostrar('erro', err.message || String(err)); })
+    .getFormulario(FORM_ID);
+</script>
+</body>
+</html>

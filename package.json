@@ -1,0 +1,11 @@
+{
+  "name": "assessor-financeiro",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Sistema de controle financeiro pessoal: Google Planilhas + Apps Script + agentes Claude",
+  "scripts": {
+    "test": "node test/logica.test.js && node test/simulacao.test.js",
+    "test:importador": "python3 -m unittest discover -s importador -p \"test_*.py\"",
+    "publicar": "npx -y @google/clasp@2.4.2 push --force"
+  }
+}
