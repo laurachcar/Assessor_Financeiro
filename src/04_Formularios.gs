@@ -55,7 +55,13 @@ function opcoesDinamicas_() {
   };
   const cartoes = ativos('Cartoes', 'Cartão', 'Ativo');
   const contas = ativos('Contas', 'Conta', 'Ativa');
+  const categorias = lerTabela_('Categorias');
+  const subPor = mapaSubcategorias(categorias);
+  const todasSub = [];
+  Object.keys(subPor).forEach(function (k) { subPor[k].forEach(function (s) { if (todasSub.indexOf(s) < 0) todasSub.push(s); }); });
   return {
+    subcategoriasPor: subPor,
+    subcategorias: todasSub,
     categorias: ativos('Categorias', 'Categoria', 'Ativa'),
     centros: ativos('Centros_Custo', 'Centro de custo', 'Ativo'),
     cartoes: cartoes,
@@ -74,7 +80,7 @@ function obterFormulario(id) {
     if (c.fonte) copia.opcoes = opcoes[c.fonte];
     return copia;
   });
-  const r = { id: id, titulo: def.titulo, ajuda: def.ajuda || '', modo: def.modo, campos: campos, registros: [] };
+  const r = { id: id, titulo: def.titulo, ajuda: def.ajuda || '', modo: def.modo, campos: campos, registros: [], subcategoriasPor: opcoes.subcategoriasPor };
   if (def.modo === 'upsert') {
     r.chave = def.chave;
     r.registros = lerTabela_(def.aba).map(function (l) { return paraCliente_(def.campos, l); });
@@ -88,7 +94,7 @@ function obterFormulario(id) {
       .map(function (l) {
         return {
           ID: String(l['ID']), Data: l['Data'] instanceof Date ? diaChave(l['Data']) : String(l['Data']),
-          'Descrição': l['Descrição'], Valor: Number(l['Valor']), Tipo: l['Tipo'], Categoria: l['Categoria'],
+          'Descrição': l['Descrição'], Valor: Number(l['Valor']), Tipo: l['Tipo'], Categoria: l['Categoria'], Subcategoria: l['Subcategoria'],
           'Centro de custo': l['Centro de custo'], 'Conta/Cartão': l['Conta/Cartão'], Origem: l['Origem']
         };
       });
@@ -245,7 +251,7 @@ function salvarAporte_(valores) {
 
 /**
  * Chamado pelo HTML de aprovação.
- * decisoes: [{ ID, acao: 'aprovar'|'descartar', Categoria, 'Centro de custo' }]
+ * decisoes: [{ ID, acao: 'aprovar'|'descartar', Categoria, Subcategoria, 'Centro de custo' }]
  */
 function processarImportados(decisoes) {
   const lock = LockService.getDocumentLock();
@@ -268,7 +274,11 @@ function processarImportados(decisoes) {
         return;
       }
       if (d.acao !== 'aprovar') return;
-      const obj = Object.assign({}, l, { 'Categoria': d.Categoria || l['Categoria'], 'Centro de custo': d['Centro de custo'] || l['Centro de custo'] });
+      const obj = Object.assign({}, l, {
+        'Categoria': d.Categoria || l['Categoria'], 'Centro de custo': d['Centro de custo'] || l['Centro de custo'],
+        'Subcategoria': d.Subcategoria !== undefined ? d.Subcategoria : (l['Subcategoria'] || '')
+      });
+      if (obj['Subcategoria'] && (opcoes.subcategoriasPor[obj['Categoria']] || []).indexOf(obj['Subcategoria']) < 0) obj['Subcategoria'] = '';
       if (obj['Tipo'] !== 'Transferência' && opcoes.categorias.indexOf(obj['Categoria']) < 0) {
         erros.push('"' + obj['Descrição'] + '": escolha uma categoria.'); return;
       }
@@ -284,7 +294,7 @@ function processarImportados(decisoes) {
       const data = parseData(obj['Data']);
       aprovar.push({
         'ID': 'I' + obj['ID'], 'Data': data, 'Descrição': obj['Descrição'], 'Valor': arred2(obj['Valor']),
-        'Tipo': obj['Tipo'], 'Categoria': obj['Categoria'], 'Centro de custo': obj['Centro de custo'] || '',
+        'Tipo': obj['Tipo'], 'Categoria': obj['Categoria'], 'Subcategoria': obj['Subcategoria'], 'Centro de custo': obj['Centro de custo'] || '',
         'Conta/Cartão': obj['Conta/Cartão'], 'Parcela': '',
         'Mês fatura': cartao && data ? mesFaturaCartao(data, cartao) : '',
         'Origem': 'Importado: ' + (obj['Origem'] || ''), 'Criado em': agora, _linhaStaging: l._linha

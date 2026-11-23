@@ -10,6 +10,8 @@ function hoje_() { return new Date(); }
 function atualizarRelatorios() {
   atualizarOrcado_();
   const plano = atualizarProjecaoECalendario_();
+  const parcelas = atualizarParcelas_();
+  plano.parcelas = parcelas;
   atualizarPainel_(plano);
 }
 
@@ -125,19 +127,64 @@ function atualizarProjecaoECalendario_() {
   // Calendário
   const sc = aba_('Calendario_Compras');
   sc.clearContents();
-  const cabC = ['Item', 'Prioridade', 'Valor', 'Melhor mês', 'Parcelas', 'Valor da parcela', 'Cartão', 'Dia de compra', 'Dias até pagar', 'Motivo'];
+  const cabC = ['Item', 'Categoria', 'Frequência', 'Prioridade', 'Valor', 'Melhor mês', 'Parcelas', 'Valor da parcela', 'Cartão', 'Dia de compra', 'Dias até pagar', 'Onde comprar', 'Motivo'];
   const linhasC = plano.itens.map(function (i) {
-    return [i.item, i.prioridade, i.valor, i.mes ? rotuloMes(i.mes) : '—', i.parcelas, i.valorParcela, i.cartao, i.dia, i.diasAtePagar, i.motivo];
+    return [i.item, i.categoria + (i.subcategoria ? ' / ' + i.subcategoria : ''), i.frequencia, i.prioridade, i.valor,
+      i.mes ? rotuloMes(i.mes) : '—', i.parcelas, i.valorParcela, i.cartao, i.dia, i.diasAtePagar, i.onde, i.motivo];
   });
   sc.getRange(1, 1).setValue('Teto de parcelas: R$ ' + Number(d.cfg.teto_parcelas || 0).toFixed(2) +
     ' por mês · máximo de ' + d.cfg.max_parcelas + ' parcelas · compre no dia seguinte ao fechamento do cartão indicado');
   sc.getRange(3, 1, linhasC.length + 1, cabC.length).setValues([cabC].concat(linhasC));
   sc.getRange(3, 1, 1, cabC.length).setFontWeight('bold').setBackground('#f1f3f4');
   if (linhasC.length) {
-    sc.getRange(4, 3, linhasC.length, 1).setNumberFormat(FMT_REAL);
-    sc.getRange(4, 6, linhasC.length, 1).setNumberFormat(FMT_REAL);
+    sc.getRange(4, 5, linhasC.length, 1).setNumberFormat(FMT_REAL);
+    sc.getRange(4, 8, linhasC.length, 1).setNumberFormat(FMT_REAL);
   }
   return { projecao: projecao, plano: plano, dados: d };
+}
+
+// ---------------------------------------------------------------- parcelas por cartão
+
+/** Aba Parcelas: cada compra parcelada (por cartão) e o total de parcelas por cartão nos próximos 12 meses. */
+function atualizarParcelas_() {
+  const sh = aba_('Parcelas');
+  const mes = mesChave(hoje_());
+  const nomes = lerTabela_('Cartoes').map(function (c) { return c['Cartão']; });
+  const r = resumoParcelas(lerTabela_('Lancamentos'), nomes, mes);
+  const meses = proximosMeses(mes, 12);
+  sh.clearContents();
+
+  const cab = ['Cartão', 'Compra', 'Categoria', 'Data da compra', 'Parcelas', 'Valor da parcela', 'Pagas', 'Faltam', 'Falta pagar', 'Última fatura'];
+  const linhas = r.compras.map(function (c) {
+    return [c.cartao, c.descricao, c.categoria + (c.subcategoria ? ' / ' + c.subcategoria : ''), c.data || '', c.totalParcelas,
+      c.valorParcela, c.pagas, c.restantes, c.valorRestante, c.ultimaFatura ? rotuloMes(c.ultimaFatura) : ''];
+  });
+  sh.getRange(1, 1).setValue('Compras parceladas por cartão');
+  sh.getRange(1, 1).setFontWeight('bold').setFontSize(12);
+  sh.getRange(2, 1, linhas.length + 1, cab.length).setValues([cab].concat(linhas));
+  sh.getRange(2, 1, 1, cab.length).setFontWeight('bold').setBackground('#f1f3f4');
+  if (linhas.length) {
+    sh.getRange(3, 4, linhas.length, 1).setNumberFormat('dd/mm/yyyy');
+    sh.getRange(3, 6, linhas.length, 1).setNumberFormat(FMT_REAL);
+    sh.getRange(3, 9, linhas.length, 1).setNumberFormat(FMT_REAL);
+  }
+
+  const inicio = linhas.length + 5;
+  const cartoes = Object.keys(r.porCartaoMes).sort();
+  const cab2 = ['Parcelas por mês'].concat(meses.map(rotuloMes)).concat(['Total']);
+  const tabela = cartoes.map(function (c) {
+    const vals = meses.map(function (m) { return r.porCartaoMes[c][m] || 0; });
+    return [c].concat(vals).concat([arred2(vals.reduce(function (a, b) { return a + b; }, 0))]);
+  });
+  const totais = ['TOTAL'];
+  for (let i = 1; i < cab2.length; i++) totais.push(arred2(tabela.reduce(function (s, l) { return s + l[i]; }, 0)));
+  const bloco = [cab2].concat(tabela).concat([totais]);
+  sh.getRange(inicio, 1, bloco.length, cab2.length).setValues(bloco);
+  sh.getRange(inicio, 1, 1, cab2.length).setFontWeight('bold').setBackground('#f1f3f4');
+  sh.getRange(inicio + bloco.length - 1, 1, 1, cab2.length).setFontWeight('bold');
+  sh.getRange(inicio + 1, 2, bloco.length - 1, cab2.length - 1).setNumberFormat(FMT_REAL);
+  sh.setFrozenRows(2);
+  return r;
 }
 
 // ---------------------------------------------------------------- painel
@@ -171,6 +218,7 @@ function atualizarPainel_(r) {
     ['', ''],
     ['Categorias acima de 80% da meta', estourados.length ? estourados.map(function (c) { return c.categoria + ' (' + Math.round(c.pct * 100) + '%)'; }).join(', ') : 'Nenhuma'],
     ['Próxima compra planejada', proximaCompra_(r.plano.itens)],
+    ['Parcelas em aberto', parcelasEmAberto_(r.parcelas)],
     ['Importações aguardando aprovação', lerTabela_('Import_Staging').filter(function (l) { return l['Status'] === 'Pendente'; }).length],
     ['', ''],
     ['Atualizado em', new Date()]
@@ -182,6 +230,14 @@ function atualizarPainel_(r) {
   sh.getRange(linhas.length, 2).setNumberFormat('dd/mm/yyyy hh:mm');
   sh.setColumnWidth(1, 280);
   sh.setColumnWidth(2, 420);
+}
+
+function parcelasEmAberto_(p) {
+  if (!p || !p.compras.length) return 'Nenhuma';
+  const porCartao = {};
+  p.compras.forEach(function (c) { if (c.restantes > 0) porCartao[c.cartao] = arred2((porCartao[c.cartao] || 0) + c.valorRestante); });
+  const partes = Object.keys(porCartao).map(function (c) { return c + ': R$ ' + porCartao[c].toFixed(2); });
+  return partes.length ? partes.join(' · ') : 'Nenhuma';
 }
 
 function proximaCompra_(itens) {

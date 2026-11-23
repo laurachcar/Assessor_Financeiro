@@ -170,7 +170,9 @@ function validarCampos(campos, dados, opcoesDinamicas) {
         v = ehSim(bruto) ? 'Sim' : 'Não';
         break;
       case 'lista': {
-        const aceitas = c.opcoes || opcoesDinamicas[c.fonte] || [];
+        const aceitas = c.dependeDe
+          ? ((opcoesDinamicas.subcategoriasPor || {})[String(dados[c.dependeDe] || '').trim()] || [])
+          : (c.opcoes || opcoesDinamicas[c.fonte] || []);
         v = String(bruto);
         if (aceitas.indexOf(v) < 0) erros.push(rotulo + ': escolha uma opção da lista.');
         break;
@@ -179,6 +181,18 @@ function validarCampos(campos, dados, opcoesDinamicas) {
     valores[c.nome] = v;
   });
   return { ok: erros.length === 0, erros: erros, valores: valores };
+}
+
+/** "Aluguel, Condomínio" -> ['Aluguel', 'Condomínio']. */
+function listaSubcategorias(texto) {
+  return String(texto || '').split(/[,;]/).map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+}
+
+/** { categoria: [subcategorias] } das categorias ativas. */
+function mapaSubcategorias(categorias) {
+  const r = {};
+  categorias.forEach(function (c) { if (ehSim(c['Ativa'])) r[String(c['Categoria'])] = listaSubcategorias(c['Subcategorias']); });
+  return r;
 }
 
 /** Pagamento de fatura lançado como Saída conta o gasto em dobro. */
@@ -226,6 +240,7 @@ function gerarLancamentos(valores, cartao, idBase) {
       'Valor': i === 0 ? primeira : parcela,
       'Tipo': valores['Tipo'],
       'Categoria': valores['Categoria'] || '',
+      'Subcategoria': valores['Subcategoria'] || '',
       'Centro de custo': valores['Centro de custo'] || '',
       'Conta/Cartão': valores['Conta/Cartão'],
       'Parcela': n > 1 ? (i + 1) + ' de ' + n : '',
@@ -435,15 +450,22 @@ function planejarCompras(p) {
   const maxGlobal = Math.max(1, Number(p.maxParcelas) || 1);
   const consumo = meses.map(function () { return 0; });
   const porMes = {};
-  const compras = (p.compras || []).filter(function (c) { return (c['Status'] || 'Planejada') === 'Planejada'; })
-    .slice().sort(function (a, b) {
+  const compras = expandirCompras(p.compras || [], meses[0], meses.length).sort(function (a, b) {
       return (PESO_PRIORIDADE[a['Prioridade']] || 9) - (PESO_PRIORIDADE[b['Prioridade']] || 9) ||
         String(mesDe(a['Mês desejado']) || '').localeCompare(String(mesDe(b['Mês desejado']) || '')) ||
         Number(a['Valor estimado']) - Number(b['Valor estimado']);
     });
 
   const resultado = compras.map(function (c) {
+    const base = {
+      item: c['Item'], prioridade: c['Prioridade'], frequencia: c['Frequência'] || 'Única',
+      categoria: c['Categoria'] || '', subcategoria: c['Subcategoria'] || '', onde: c['Onde comprar'] || ''
+    };
     const valor = arred2(c['Valor estimado']);
+    if (!(valor > 0)) {
+      return Object.assign(base, { valor: '', mes: '', parcelas: '', valorParcela: '', cartao: '', dia: '', diasAtePagar: '',
+        motivo: 'Informe o valor estimado para planejar' });
+    }
     const maxN = Math.min(maxGlobal, Number(c['Parcelas máx']) || maxGlobal);
     const desejado = mesDe(c['Mês desejado']);
     const inicio = Math.max(0, desejado ? difMeses(meses[0], desejado) : 0);
@@ -471,19 +493,81 @@ function planejarCompras(p) {
         const cartao = n > 1 || (p.cartoes || []).length ? melhorCartao(p.cartoes || [], meses[s]) : null;
         let motivo = s === inicio ? 'Cabe no mês desejado' : 'Adiado: caixa ou teto de parcelas não comportam antes';
         if (!desejado && s === 0) motivo = 'Cabe já';
-        return {
-          item: c['Item'], valor: valor, prioridade: c['Prioridade'], mes: meses[s], parcelas: n,
+        return Object.assign(base, {
+          valor: valor, mes: meses[s], parcelas: n,
           valorParcela: parcela, cartao: cartao ? cartao.cartao : '', dia: cartao ? cartao.dia : '',
           diasAtePagar: cartao ? cartao.dias : '', motivo: motivo
-        };
+        });
       }
     }
-    return {
-      item: c['Item'], valor: valor, prioridade: c['Prioridade'], mes: '', parcelas: '', valorParcela: '',
+    return Object.assign(base, {
+      valor: valor, mes: '', parcelas: '', valorParcela: '',
       cartao: '', dia: '', diasAtePagar: '', motivo: 'Não cabe nos próximos ' + meses.length + ' meses'
-    };
+    });
   });
   return { itens: resultado, porMes: porMes };
+}
+
+/**
+ * Compras planejadas, com as recorrentes repetidas no horizonte.
+ * Ex.: Botox semestral a partir de jan -> jan e jul. Uma compra recorrente sem mês começa no mês atual.
+ */
+function expandirCompras(compras, mesInicial, horizonte) {
+  const fim = somarMeses(mesInicial, horizonte - 1);
+  const r = [];
+  compras.forEach(function (c) {
+    if ((c['Status'] || 'Planejada') !== 'Planejada') return;
+    const intervalo = FREQUENCIAS[c['Frequência']] || 0;
+    if (!intervalo) { r.push(c); return; }
+    let mes = mesDe(c['Mês desejado']) || mesInicial;
+    while (mes < mesInicial) mes = somarMeses(mes, intervalo);
+    for (; mes <= fim; mes = somarMeses(mes, intervalo)) {
+      r.push(Object.assign({}, c, { 'Mês desejado': mes }));
+    }
+  });
+  return r;
+}
+
+// ---------------------------------------------------------------- parcelas por cartão
+
+/**
+ * Compras parceladas agrupadas: cartão, total de parcelas, quantas faltam e quanto falta pagar.
+ * Uma parcela conta como paga quando a fatura dela vence antes do mês atual.
+ */
+function resumoParcelas(lancamentos, nomesCartoes, mesAtual) {
+  const grupos = {}, ordem = [];
+  lancamentos.forEach(function (l) {
+    if (!l['Parcela'] || l['Tipo'] !== 'Saída' || nomesCartoes.indexOf(l['Conta/Cartão']) < 0) return;
+    const id = String(l['ID']).replace(/-\d+$/, '');
+    if (!grupos[id]) { grupos[id] = []; ordem.push(id); }
+    grupos[id].push(l);
+  });
+  const porCartaoMes = {};
+  const compras = ordem.map(function (id) {
+    const ls = grupos[id];
+    const total = Number(String(ls[0]['Parcela']).split(' de ')[1]) || ls.length;
+    let pagas = 0, restante = 0, ultima = '';
+    ls.forEach(function (l) {
+      const m = mesDe(l['Mês fatura']);
+      if (m > ultima) ultima = m;
+      if (m && m < mesAtual) pagas++;
+      else {
+        restante += Number(l['Valor']);
+        const c = l['Conta/Cartão'];
+        porCartaoMes[c] = porCartaoMes[c] || {};
+        porCartaoMes[c][m] = arred2((porCartaoMes[c][m] || 0) + Number(l['Valor']));
+      }
+    });
+    const d = parseData(ls[0]['Data']);
+    return {
+      cartao: ls[0]['Conta/Cartão'], descricao: ls[0]['Descrição'], categoria: ls[0]['Categoria'] || '',
+      subcategoria: ls[0]['Subcategoria'] || '', data: d, totalParcelas: total,
+      valorParcela: arred2(ls[ls.length - 1]['Valor']), pagas: pagas, restantes: total - pagas,
+      valorRestante: arred2(restante), ultimaFatura: ultima
+    };
+  });
+  compras.sort(function (a, b) { return a.cartao < b.cartao ? -1 : a.cartao > b.cartao ? 1 : (a.ultimaFatura < b.ultimaFatura ? -1 : 1); });
+  return { compras: compras, porCartaoMes: porCartaoMes };
 }
 
 // ---------------------------------------------------------------- importação

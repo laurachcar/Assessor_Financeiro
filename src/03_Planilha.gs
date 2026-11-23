@@ -179,7 +179,20 @@ function semearDados_() {
   }
   if (!lerTabela_('Categorias').length) {
     acrescentarLinhas_('Categorias', CATEGORIAS_PADRAO.map(function (c) {
-      return { 'Categoria': c[0], 'Tipo': c[1], 'Meta mensal': '', 'Centro de custo': '', 'Ativa': 'Sim' };
+      return { 'Categoria': c[0], 'Tipo': c[1], 'Subcategorias': c[2], 'Meta mensal': '', 'Centro de custo': '', 'Ativa': 'Sim' };
+    }));
+  }
+  const mes = mesChave(hoje_());
+  if (!lerTabela_('Fixos').length) {
+    acrescentarLinhas_('Fixos', FIXOS_PADRAO.map(function (f) {
+      return { 'Descrição': f[0], 'Tipo': f[1], 'Valor': f[2], 'Categoria': f[3], 'Subcategoria': f[4], 'Centro de custo': '',
+        'Conta/Cartão': '', 'Dia': 10, 'Início': mes, 'Fim': f[5] ? somarMeses(mes, f[5] - 1) : '', 'Ativo': 'Sim' };
+    }));
+  }
+  if (!lerTabela_('Compras_Futuras').length) {
+    acrescentarLinhas_('Compras_Futuras', COMPRAS_PADRAO.map(function (c) {
+      return { 'Item': c[0], 'Valor estimado': c[1], 'Prioridade': c[2], 'Frequência': c[3], 'Mês desejado': '', 'Parcelas máx': '',
+        'Categoria': c[4], 'Subcategoria': c[5], 'Onde comprar': '', 'Status': 'Planejada', 'Observação': '' };
     }));
   }
 }
@@ -230,14 +243,15 @@ function escreverAjuda_() {
     ['2. Cadastros > Cartões: nome, dia de fechamento e dia de vencimento.'],
     ['3. Investimentos > Aporte mensal e reserva: aporte do mês e saldo atual da reserva.'],
     ['4. Investimentos > Metas de investimento: o % do aporte das metas deve somar 100%.'],
-    ['5. Planejamento > Categorias e metas de gasto: meta mensal de cada categoria.'],
-    ['6. Movimento > Fixos e recorrentes: salário, aluguel, condomínio...'],
-    ['7. Planejamento > Compras futuras: o que você quer comprar.'],
+    ['5. Planejamento > Categorias e metas de gasto: meta mensal e subcategorias de cada categoria.'],
+    ['6. Movimento > Fixos e recorrentes: confira os que já vêm cadastrados (Tênis, USP, Imposto, dívidas, aluguel da vaga) e acrescente salário, aluguel, condomínio...'],
+    ['7. Planejamento > Compras futuras: a sua lista já vem cadastrada. Informe valor, onde comprar e acrescente o que quiser.'],
     [''],
     ['Regras importantes:'],
     ['• Pagamento de fatura é Transferência, não Saída. As compras do cartão já entram como gasto, uma por uma.'],
     ['• Use o menu para editar: ele valida tudo antes de gravar.'],
     ['• Nunca digite número de cartão ou conta. O sistema recusa sequências de 12 dígitos ou mais.'],
+    ['• Lance cada compra no cartão em que foi feita. A aba Parcelas mostra, por cartão, quantas parcelas faltam e quanto falta pagar.'],
     ['• Orçado x realizado: troque o ano em B1 e o centro de custo em D1.']
   ];
   sh.getRange(1, 1, linhas.length, 1).setValues(linhas);

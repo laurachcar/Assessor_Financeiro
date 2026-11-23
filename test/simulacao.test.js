@@ -22,24 +22,31 @@ function cadastroBasico(a) {
   ok(salvar(a, 'contas', { 'Conta': 'Itaú', 'Tipo': 'Corrente', 'Saldo atual': '5.000,00', 'Ativa': true }));
   ok(salvar(a, 'cartoes', { 'Cartão': 'Nubank', 'Dia fechamento': '3', 'Dia vencimento': '10', 'Ativo': true }));
   ok(salvar(a, 'cartoes', { 'Cartão': 'Amex', 'Dia fechamento': '25', 'Dia vencimento': '5', 'Ativo': true }));
-  ok(salvar(a, 'categorias', { _original: 'Mercado', 'Categoria': 'Mercado', 'Tipo': 'Saída', 'Meta mensal': '1000', 'Ativa': true }));
+  ok(salvar(a, 'categorias', { _original: 'Alimentação', 'Categoria': 'Alimentação', 'Tipo': 'Saída', 'Subcategorias': 'Mercado, Feira, Outros', 'Meta mensal': '1000', 'Ativa': true }));
 }
 
 function lancar(a, desc, valor, extra) {
   return salvar(a, 'lancamento', Object.assign({
     'Data': '2026-11-10', 'Descrição': desc, 'Valor': String(valor), 'Tipo': 'Saída',
-    'Categoria': 'Mercado', 'Centro de custo': 'Pessoal', 'Conta/Cartão': 'Itaú', 'Parcelas': ''
+    'Categoria': 'Alimentação', 'Subcategoria': 'Mercado', 'Centro de custo': 'Pessoal', 'Conta/Cartão': 'Itaú', 'Parcelas': ''
   }, extra || {}));
 }
 
-s.teste('instalação cria 17 abas visíveis, 2 ocultas, cadastros padrão e 3 gatilhos', () => {
+s.teste('instalação cria 18 abas visíveis, 2 ocultas, cadastros padrão e 3 gatilhos', () => {
   const a = novo();
   const nomes = Object.keys(a.abas);
-  assert.strictEqual(nomes.length, 19);
-  assert.strictEqual(nomes.filter(n => !a.abas[n].oculta).length, 17);
+  assert.strictEqual(nomes.length, 20);
+  assert.strictEqual(nomes.filter(n => !a.abas[n].oculta).length, 18);
   eq(nomes.filter(n => a.abas[n].oculta).sort(), ['Log', 'Relatorios']);
   assert.strictEqual(a.abas.Lancamentos.dados[0][0], 'ID');
-  assert.ok(a.tabela('Categorias').length >= 20);
+  const cats = a.tabela('Categorias');
+  assert.ok(cats.some(c => c['Categoria'] === 'Pipa' && c['Subcategorias'].indexOf('Vacinas') >= 0));
+  assert.ok(cats.some(c => c['Categoria'] === 'Cashback' && c['Tipo'] === 'Entrada'));
+  // custos fixos e dívidas da Laura já vêm cadastrados; as dívidas acabam em 4 meses
+  const fixos = a.tabela('Fixos');
+  eq(fixos.map(f => f['Descrição']), ['Aluguel vaga', 'Tênis', 'USP', 'Imposto', 'Dívida: imposto atrasado', 'Dívida: USP atrasada']);
+  assert.strictEqual(fixos[4]['Fim'], '2027-02');
+  assert.strictEqual(a.tabela('Compras_Futuras').filter(c => c['Item'] === 'Botox')[0]['Frequência'], 'Semestral');
   assert.strictEqual(a.tabela('Configuracoes').filter(c => c['Chave'] === 'email')[0]['Valor'], 'dono@exemplo.com');
   eq(a.gatilhos.map(g => g.getHandlerFunction()).sort(), ['carteiro', 'lembreteMensal', 'rotinaDiaria']);
 });
@@ -89,7 +96,7 @@ s.teste('lançamento à vista grava e aparece no orçado x realizado', () => {
   assert.strictEqual(l[0]['Valor'], 87.3);
   assert.strictEqual(l[0]['Origem'], 'Manual');
   const orc = a.abas.Orcado_Realizado.dados;
-  const mercado = orc.filter(r => r && r[0] === 'Mercado')[0];
+  const mercado = orc.filter(r => r && r[0] === 'Alimentação')[0];
   assert.strictEqual(mercado[1], 1000);      // meta mensal
   assert.strictEqual(mercado[2 + 10], 87.3);  // novembro
 });
@@ -107,10 +114,10 @@ s.teste('compra parcelada no cartão gera uma linha por parcela; conta não parc
 s.teste('fatura como Saída é recusada; como Transferência não entra no orçado', () => {
   const a = novo();
   cadastroBasico(a);
-  const r = lancar(a, 'Pagamento fatura Nubank', 1500, { 'Categoria': '' });
+  const r = lancar(a, 'Pagamento fatura Nubank', 1500, { 'Categoria': '', 'Subcategoria': '' });
   assert.strictEqual(r.ok, false);
   assert.ok(r.erros[0].indexOf('Transferência') >= 0);
-  ok(lancar(a, 'Pagamento fatura Nubank', 1500, { 'Tipo': 'Transferência', 'Categoria': '' }));
+  ok(lancar(a, 'Pagamento fatura Nubank', 1500, { 'Tipo': 'Transferência', 'Categoria': '', 'Subcategoria': '' }));
   const total = a.abas.Orcado_Realizado.dados.filter(x => x && x[0] === 'TOTAL')[0];
   assert.strictEqual(total[2 + 10], 0);
 });
@@ -123,7 +130,7 @@ s.teste('alertas de orçamento em 80% e 100%, por e-mail, sem repetir', () => {
   assert.strictEqual(a.emails.length, 0);
   ok(lancar(a, 'Mais compras', 350));         // 85%
   assert.strictEqual(a.emails.length, 1);
-  assert.ok(a.emails[0].subject.indexOf('Mercado') >= 0);
+  assert.ok(a.emails[0].subject.indexOf('Alimentação') >= 0);
   ok(lancar(a, 'Pão', 10));                   // 86%: não repete
   assert.strictEqual(a.emails.length, 1);
   ok(lancar(a, 'Churrasco', 200));            // 106%
@@ -143,7 +150,7 @@ s.teste('filtros de ano e centro de custo do orçado recalculam ao editar', () =
   ok(lancar(a, 'Ano passado', 70, { 'Data': '2025-11-10' }));
   const sh = a.rodar("SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Orcado_Realizado')");
   const ss = a.rodar('SpreadsheetApp.getActiveSpreadsheet()');
-  const mercado = () => a.abas.Orcado_Realizado.dados.filter(r => r && r[0] === 'Mercado')[0];
+  const mercado = () => a.abas.Orcado_Realizado.dados.filter(r => r && r[0] === 'Alimentação')[0];
   assert.strictEqual(mercado()[14], 140);   // total 2026, todos os centros
   assert.strictEqual(mercado()[17], 70);    // total 2025
   sh.getRange(1, 4).setValue('Empresa');
@@ -183,13 +190,19 @@ s.teste('projeção de 12 meses e calendário de compras gravados nas abas', () 
   assert.strictEqual(meses.length, 12);
   assert.strictEqual(meses[0][0], 'Nov/2026');
   assert.strictEqual(meses[0][1], 5000);                 // saldo inicial = conta Itaú
-  assert.strictEqual(meses[0][7], 5000 + 9000 - 3500 - 1000);
-  const cal = a.abas.Calendario_Compras.dados[3];
-  assert.strictEqual(cal[0], 'Notebook');
-  assert.strictEqual(cal[3], 'Jan/2027');
-  assert.ok(cal[4] === 1 || cal[5] <= 800);              // à vista, ou parcela dentro do teto
-  assert.strictEqual(cal[6], 'Amex');
-  assert.strictEqual(meses[2][5], cal[5]);               // parcela aparece na projeção de jan
+  // fixos cadastrados na instalação: +200 vaga; -500 tênis, -550 USP, -780 imposto e as duas dívidas (-780, -550)
+  // e as compras recorrentes com valor (Botox e Boca) entram já no primeiro mês
+  assert.strictEqual(meses[0][5], 1200 + 1500);
+  assert.strictEqual(meses[0][7], 5000 + 9200 - 3500 - 3160 - 2700 - 1000);
+  assert.strictEqual(meses[4][3], 3500 + 1830);           // em mar/2027 as dívidas já acabaram
+  const cal = a.abas.Calendario_Compras.dados.filter(r => r && r[0] === 'Notebook')[0];
+  assert.strictEqual(cal[5], 'Jan/2027');
+  assert.ok(cal[6] === 1 || cal[7] <= 800);              // à vista, ou parcela dentro do teto
+  assert.strictEqual(cal[8], 'Amex');
+  const botox = a.abas.Calendario_Compras.dados.filter(r => r && r[0] === 'Botox');
+  assert.strictEqual(botox.length, 2);                   // semestral: 2 vezes em 12 meses
+  const micro = a.abas.Calendario_Compras.dados.filter(r => r && r[0] === 'Micro-ondas')[0];
+  assert.ok(micro[12].indexOf('Informe o valor') === 0);
   const painel = a.abas.Painel.dados.map(r => r[0]);
   assert.ok(painel.indexOf('Próxima compra planejada') >= 0);
 });
@@ -206,7 +219,7 @@ s.teste('lembrete do dia 1 envia resumo do mês anterior', () => {
   assert.strictEqual(e.to, 'dono@exemplo.com');
   assert.ok(e.subject.indexOf('Dez/2026') >= 0);
   assert.ok(e.htmlBody.indexOf('R$ 1.200,00') >= 0);
-  assert.ok(e.htmlBody.indexOf('Mercado (120%)') >= 0);
+  assert.ok(e.htmlBody.indexOf('Alimentação (120%)') >= 0);
   assert.ok(e.htmlBody.indexOf('Registre o aporte') >= 0);
 });
 
@@ -238,7 +251,7 @@ s.teste('importação: descarta duplicados, aprova com categoria e respeita a re
   const form = a.chamar('obterFormulario', 'importados');
   eq(form.pendentes.map(p => p.ID), ['2', '4', '5']);
   const r = a.chamar('processarImportados', [
-    { ID: '2', acao: 'aprovar', Categoria: 'Mercado' },
+    { ID: '2', acao: 'aprovar', Categoria: 'Alimentação', Subcategoria: 'Mercado' },
     { ID: '4', acao: 'descartar' },
     { ID: '5', acao: 'aprovar', Categoria: 'Outros' }
   ]);
@@ -247,8 +260,22 @@ s.teste('importação: descarta duplicados, aprova com categoria e respeita a re
   eq(a.tabela('Import_Staging').map(x => x['Status']), ['Duplicado', 'Aprovado', 'Duplicado', 'Descartado', 'Pendente']);
   const l = a.tabela('Lancamentos');
   assert.strictEqual(l.length, 2);
-  assert.strictEqual(l[1]['Categoria'], 'Mercado');
+  assert.strictEqual(l[1]['Categoria'], 'Alimentação');
+  assert.strictEqual(l[1]['Subcategoria'], 'Mercado');
   assert.ok(l[1]['Origem'].indexOf('extrato.csv') >= 0);
+});
+
+s.teste('aba Parcelas mostra cada compra parcelada por cartão e o total por mês', () => {
+  const a = novo();
+  cadastroBasico(a);
+  ok(lancar(a, 'Geladeira', 3000, { 'Conta/Cartão': 'Nubank', 'Parcelas': '3', 'Data': '2026-11-05' }));
+  ok(lancar(a, 'Tênis novo', 600, { 'Conta/Cartão': 'Amex', 'Parcelas': '2', 'Data': '2026-11-10' }));
+  const d = a.abas.Parcelas.dados;
+  const linhas = d.slice(2).filter(r => r && (r[0] === 'Nubank' || r[0] === 'Amex') && typeof r[1] === 'string');
+  eq(linhas.map(r => [r[0], r[1], r[4], r[5], r[7], r[8]]), [['Amex', 'Tênis novo', 2, 300, 2, 600], ['Nubank', 'Geladeira', 3, 1000, 3, 3000]]);
+  const total = d.filter(r => r && r[0] === 'TOTAL')[0];
+  assert.strictEqual(total[total.length - 1], 3600);
+  assert.ok(a.abas.Painel.dados.some(r => r[0] === 'Parcelas em aberto' && String(r[1]).indexOf('Nubank: R$ 3000.00') >= 0));
 });
 
 s.rodar();

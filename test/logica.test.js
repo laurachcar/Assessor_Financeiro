@@ -192,4 +192,39 @@ s.teste('duplicados: contra lançamentos e dentro da própria importação', () 
   eq(Array.from(f('detectarDuplicados')(pend, existentes)), [true, false, true]);
 });
 
+s.teste('subcategoria precisa pertencer à categoria escolhida', () => {
+  const campos = amb.rodar('FORMULARIOS.lancamento.campos');
+  const subPor = f('mapaSubcategorias')([{ 'Categoria': 'Pipa', 'Subcategorias': 'Veterinário, Vacinas', 'Ativa': 'Sim' }, { 'Categoria': 'Lazer', 'Subcategorias': 'Saídas', 'Ativa': 'Sim' }]);
+  const op = { categorias: ['Pipa', 'Lazer'], centros: [], contasECartoes: ['Nubank'], subcategoriasPor: subPor };
+  const base = { 'Data': '2026-11-10', 'Descrição': 'Consulta', 'Valor': '300', 'Tipo': 'Saída', 'Categoria': 'Pipa', 'Conta/Cartão': 'Nubank' };
+  assert.ok(f('validarCampos')(campos, Object.assign({ 'Subcategoria': 'Veterinário' }, base), op).ok);
+  assert.ok(f('validarCampos')(campos, Object.assign({ 'Subcategoria': '' }, base), op).ok);
+  assert.strictEqual(f('validarCampos')(campos, Object.assign({ 'Subcategoria': 'Saídas' }, base), op).ok, false);
+});
+
+s.teste('compras recorrentes se repetem no horizonte; sem valor ficam pendentes', () => {
+  const lista = f('expandirCompras')([
+    { 'Item': 'Botox', 'Valor estimado': 1200, 'Frequência': 'Semestral', 'Mês desejado': '2026-09', 'Status': 'Planejada' },
+    { 'Item': 'Boca', 'Valor estimado': 1500, 'Frequência': 'Anual', 'Status': 'Planejada' },
+    { 'Item': 'Airfryer', 'Frequência': 'Única', 'Status': 'Planejada' }
+  ], '2026-11', 12);
+  eq(lista.map(c => c['Item'] + ' ' + (c['Mês desejado'] || '')), ['Botox 2027-03', 'Botox 2027-09', 'Boca 2026-11', 'Airfryer ']);
+  const projecao = ['2026-11', '2026-12'].map(mes => ({ mes, saldoFinal: 100000 }));
+  const r = f('planejarCompras')({ projecao, compras: [{ 'Item': 'Airfryer', 'Prioridade': 'Alta', 'Onde comprar': 'Amazon', 'Status': 'Planejada' }], teto: 1000, maxParcelas: 10, cartoes: [] });
+  assert.strictEqual(r.itens[0].mes, '');
+  assert.strictEqual(r.itens[0].onde, 'Amazon');
+  assert.ok(r.itens[0].motivo.indexOf('Informe o valor') === 0);
+});
+
+s.teste('parcelas por cartão: total, pagas, faltam e quanto falta', () => {
+  const g = f('gerarLancamentos')({ 'Data': D(2026, 9, 5), 'Descrição': 'Geladeira', 'Valor': 1200, 'Tipo': 'Saída',
+    'Categoria': 'Compras', 'Subcategoria': 'Casa e eletro', 'Conta/Cartão': 'Nubank', 'Parcelas': 4 }, cartaoNubank, 'L9');
+  // faturas: out, nov, dez, jan. Em nov/2026, outubro já foi paga.
+  const r = f('resumoParcelas')(g.concat([{ 'ID': 'X', 'Tipo': 'Saída', 'Conta/Cartão': 'Itaú', 'Parcela': '' }]), ['Nubank'], '2026-11');
+  assert.strictEqual(r.compras.length, 1);
+  const c = r.compras[0];
+  eq([c.cartao, c.totalParcelas, c.pagas, c.restantes, c.valorRestante, c.ultimaFatura], ['Nubank', 4, 1, 3, 900, '2027-01']);
+  eq(r.porCartaoMes, { Nubank: { '2026-11': 300, '2026-12': 300, '2027-01': 300 } });
+});
+
 s.rodar();

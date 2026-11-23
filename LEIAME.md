@@ -4,11 +4,13 @@ Sistema de controle financeiro em Google Planilhas + Apps Script. Esta versão r
 
 ## O que já funciona
 
-- 17 abas + 2 ocultas (Relatorios e Log), criadas automaticamente
+- 18 abas + 2 ocultas (Relatorios e Log), criadas automaticamente
+- Categorias com subcategorias (ex.: Moradia > Aluguel, Condomínio, Contas de casa; Pipa > Veterinário, Vacinas)
+- Aba **Parcelas**: cada compra parcelada por cartão, com total de parcelas, quantas faltam e quanto falta pagar, e o total por cartão nos próximos 12 meses
 - Menu **Assessor** com 11 formulários de entrada de informações, com validação
 - Orçado vs. realizado por categoria, mês a mês, com filtro de ano e centro de custo e comparação com o ano anterior
 - Projeção de caixa de 12 meses
-- Calendário de compras: melhor mês, parcelas, cartão e dia de compra
+- Calendário de compras: melhor mês, parcelas, cartão, dia de compra e onde comprar, inclusive compras que se repetem (ex.: Botox semestral, Boca anual)
 - Reserva de emergência: recebe 50% do aporte até R$ 10 mil, depois congela e redistribui para as metas
 - Lembrete por e-mail no dia 1 de cada mês, às 8h
 - Alertas de orçamento por e-mail em 80% e 100% da meta, sem repetir
@@ -39,12 +41,13 @@ Use uma **planilha nova**. A planilha antiga tem uma aba chamada "Investimentos"
 2. **Cadastros > Cartões**: Nubank, C6, Amex, com dia de fechamento e dia de vencimento.
 3. **Investimentos > Aporte mensal e reserva**: aporte do mês e saldo atual da reserva.
 4. **Investimentos > Metas de investimento**: casa própria, imóveis por consórcio, etc. O % do aporte das metas deve somar 100%.
-5. **Planejamento > Categorias e metas de gasto**: meta mensal de cada categoria (as categorias da planilha antiga já vêm cadastradas).
-6. **Movimento > Fixos e recorrentes**: salário, aluguel, condomínio, USP...
-7. **Planejamento > Compras futuras**: o que você quer comprar.
+5. **Planejamento > Categorias e metas de gasto**: meta mensal de cada categoria. As categorias e subcategorias já vêm cadastradas e podem ser editadas.
+6. **Movimento > Fixos e recorrentes**: Tênis, USP, Imposto, as dívidas (4 meses de imposto e 4 de USP) e o aluguel da vaga já vêm cadastrados a partir do mês da instalação. Confira o dia e a conta de cada um e acrescente salário, aluguel, condomínio...
+7. **Planejamento > Compras futuras**: sua lista já vem cadastrada (micro-ondas, airfryer, robô aspirador, Botox, Boca, roupas, sapatos, veterinário e vacinas da Pipa). Informe o valor e onde comprar; sem valor, o item aparece no calendário pedindo o valor. Para acrescentar, use o mesmo formulário.
 
 ## Regras importantes
 
+- **Lance cada compra no cartão em que foi feita.** É isso que monta a aba Parcelas e o mês da fatura.
 - **Pagamento de fatura é Transferência**, não Saída. As compras do cartão já entram como gasto, uma por uma. Se a fatura também entrar como Saída, o gasto conta em dobro.
 - As abas mostram um aviso se você editar direto. Use o menu: ele valida tudo antes de gravar.
 - Nunca digite número de cartão ou conta. O sistema recusa qualquer sequência de 12 dígitos ou mais.
@@ -73,8 +76,8 @@ Precisa só do Node 18 ou mais novo, sem instalar nada.
 
 ```
 npm test                      # roda os dois
-node test/logica.test.js      # regras de negócio (17 testes)
-node test/simulacao.test.js   # fluxo completo com planilha simulada (14 cenários)
+node test/logica.test.js      # regras de negócio (20 testes)
+node test/simulacao.test.js   # fluxo completo com planilha simulada (15 cenários)
 ```
 
 ## Próximas fases
