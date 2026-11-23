@@ -1,0 +1,9 @@
+{
+  "name": "assessor-financeiro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Assessor Financeiro em Google Planilhas + Apps Script",
+  "scripts": {
+    "test": "node test/logica.test.js && node test/simulacao.test.js"
+  }
+}
