@@ -1,0 +1,54 @@
+# Roda os testes em toda mudança. Se passarem e a mudança estiver na branch main,
+# publica o código da pasta src/ na planilha (Apps Script) usando o clasp.
+name: Testar e publicar na planilha
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Testes das regras e da planilha simulada
+        run: npm test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Testes do importador
+        run: npm run test:importador
+
+  publicar:
+    needs: testes
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Conferir segredos
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ] || [ -z "$SCRIPT_ID" ]; then
+            echo "::warning::Segredos CLASPRC_JSON e SCRIPT_ID ainda não configurados. Publicação pulada (os testes rodaram)."
+            echo "PULAR=1" >> "$GITHUB_ENV"
+          fi
+      - name: Publicar na planilha
+        if: env.PULAR != '1'
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          node scripts/gerar-clasp.js "$SCRIPT_ID"
+          npx -y @google/clasp@2.4.2 push --force
+          rm -f ~/.clasprc.json

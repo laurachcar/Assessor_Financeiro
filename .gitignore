@@ -1,0 +1,15 @@
+# Credenciais e configuração local do clasp: nunca vão para o GitHub
+.clasprc.json
+.clasp.json
+
+# Extratos e faturas reais: nunca vão para o GitHub
+extratos/
+*.ofx
+*.OFX
+# exceção: exemplos fictícios usados nos testes
+!importador/exemplos/*.ofx
+saida/
+
+node_modules/
+__pycache__/
+.DS_Store
