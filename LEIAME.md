@@ -36,7 +36,7 @@ Use uma **planilha nova**. A planilha antiga tem uma aba chamada "Investimentos"
 ## Primeiro uso (nesta ordem)
 
 1. **Cadastros > Configurações gerais**: confira o e-mail e o teto de parcelas.
-2. **Cadastros > Cartões**: Nubank, C6, Amex, com dia de fechamento e retorno.
+2. **Cadastros > Cartões**: Nubank, C6, Amex, com dia de fechamento e dia de vencimento.
 3. **Investimentos > Aporte mensal e reserva**: aporte do mês e saldo atual da reserva.
 4. **Investimentos > Metas de investimento**: casa própria, imóveis por consórcio, etc. O % do aporte das metas deve somar 100%.
 5. **Planejamento > Categorias e metas de gasto**: meta mensal de cada categoria (as categorias da planilha antiga já vêm cadastradas).
@@ -49,9 +49,30 @@ Use uma **planilha nova**. A planilha antiga tem uma aba chamada "Investimentos"
 - As abas mostram um aviso se você editar direto. Use o menu: ele valida tudo antes de gravar.
 - Nunca digite número de cartão ou conta. O sistema recusa qualquer sequência de 12 dígitos ou mais.
 
+## Arquivos
+
+| Arquivo | O que faz |
+|---|---|
+| `src/01_Config.gs` | Abas, colunas, valores padrão, categorias iniciais e a definição dos 11 formulários |
+| `src/02_Logica.gs` | Regras de negócio puras: validação, parcelas e fatura, reserva, orçado, alertas, projeção, calendário, duplicados |
+| `src/03_Planilha.gs` | Leitura e gravação nas abas, instalação/reparo, proteção com aviso, `onEdit` |
+| `src/04_Formularios.gs` | Menu **Assessor**, carregamento e gravação dos formulários, aprovação de importados |
+| `src/05_Relatorios.gs` | Orçado x realizado, Projeção de caixa, Calendário de compras e Painel |
+| `src/06_Gatilhos.gs` | Lembrete do dia 1, alertas de orçamento, rotina diária e carteiro |
+| `src/Formulario.html` | Janela única que desenha qualquer formulário a partir da definição |
+| `src/appsscript.json` | Fuso de São Paulo, runtime V8 e permissões |
+
+## Como o Claude conversa com a planilha (fases 3 a 5)
+
+- **Importação:** gravar linhas em `Import_Staging` com Status `Pendente` (colunas ID, Data, Descrição, Valor, Tipo, Categoria, Centro de custo, Conta/Cartão, Origem). Duplicados são descartados ao abrir **Importação > Aprovar lançamentos importados** e na rotina diária.
+- **Relatórios:** gravar uma linha na aba oculta `Relatorios` com Assunto, Corpo (HTML) e Status `Pendente`, ou chamar `registrarRelatorio(assunto, corpoHtml)`. O carteiro envia de hora em hora; também dá para enviar na hora pelo menu.
+
 ## Testes
 
+Precisa só do Node 18 ou mais novo, sem instalar nada.
+
 ```
+npm test                      # roda os dois
 node test/logica.test.js      # regras de negócio (17 testes)
 node test/simulacao.test.js   # fluxo completo com planilha simulada (14 cenários)
 ```

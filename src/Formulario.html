@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 13px; color: #202124; margin: 0; padding: 12px 16px; }
+    .ajuda { background: #e8f0fe; border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; }
+    label { display: block; font-weight: bold; margin: 10px 0 4px; }
+    input[type=text], input[type=email], input[type=number], input[type=date], input[type=month], select {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 13px;
+    }
+    .linha-check { display: flex; align-items: center; gap: 6px; margin-top: 12px; font-weight: bold; }
+    .acoes { margin-top: 16px; display: flex; gap: 8px; }
+    button { padding: 8px 16px; border: 0; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .primario { background: #1a73e8; color: #fff; }
+    .secundario { background: #f1f3f4; color: #202124; }
+    button:disabled { opacity: .5; cursor: default; }
+    .msg { margin-top: 12px; padding: 8px 10px; border-radius: 6px; display: none; }
+    .msg.ok { display: block; background: #e6f4ea; color: #137333; }
+    .msg.erro { display: block; background: #fce8e6; color: #c5221f; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #eee; padding: 4px; text-align: left; vertical-align: middle; }
+    td select { min-width: 120px; }
+    .valor { text-align: right; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <div id="ajuda" class="ajuda" style="display:none"></div>
+  <div id="seletor"></div>
+  <form id="form" onsubmit="return false"></form>
+  <div class="acoes">
+    <button id="salvar" class="primario" onclick="salvar()">Salvar</button>
+    <button class="secundario" onclick="google.script.host.close()">Fechar</button>
+  </div>
+  <div id="msg" class="msg"></div>
+
+<script>
+  var FORM_ID = <?!= JSON.stringify(formId) ?>;
+  var def = null;
+  var original = '';
+
+  function el(tag, attrs, texto) {
+    var e = document.createElement(tag);
+    for (var k in (attrs || {})) e.setAttribute(k, attrs[k]);
+    if (texto !== undefined) e.textContent = texto;
+    return e;
+  }
+
+  function mostrar(tipo, texto) {
+    var m = document.getElementById('msg');
+    m.className = 'msg ' + tipo;
+    m.innerHTML = '';
+    (Array.isArray(texto) ? texto : [texto]).forEach(function (t) { m.appendChild(el('div', {}, t)); });
+  }
+
+  function carregar() {
+    google.script.run.withSuccessHandler(montar).withFailureHandler(function (e) { mostrar('erro', e.message); })
+      .obterFormulario(FORM_ID);
+  }
+
+  function montar(d) {
+    def = d;
+    if (d.ajuda) { var a = document.getElementById('ajuda'); a.textContent = d.ajuda; a.style.display = 'block'; }
+    if (d.modo === 'aprovacao') return montarAprovacao(d);
+    if (d.modo === 'upsert') montarSeletor(d);
+    montarCampos(d.modo === 'config' ? d.registros[0] : null);
+  }
+
+  function montarSeletor(d) {
+    var s = document.getElementById('seletor');
+    s.innerHTML = '';
+    s.appendChild(el('label', {}, 'Editar existente ou criar novo'));
+    var sel = el('select', { id: '_registro' });
+    sel.appendChild(el('option', { value: '' }, '+ Novo'));
+    d.registros.forEach(function (r, i) { sel.appendChild(el('option', { value: String(i) }, String(r[d.chave]))); });
+    sel.onchange = function () {
+      var r = sel.value === '' ? null : d.registros[Number(sel.value)];
+      original = r ? String(r[d.chave]) : '';
+      montarCampos(r);
+    };
+    s.appendChild(sel);
+  }
+
+  function montarCampos(valores) {
+    var f = document.getElementById('form');
+    f.innerHTML = '';
+    def.campos.forEach(function (c) {
+      var v = valores ? valores[c.nome] : (c.padrao !== undefined ? c.padrao : '');
+      if (c.tipo === 'data' && !valores && !v) { var h = new Date(); v = h.getFullYear() + '-' + ('0' + (h.getMonth() + 1)).slice(-2) + '-' + ('0' + h.getDate()).slice(-2); }
+      var input;
+      if (c.tipo === 'simnao') {
+        var linha = el('label', { 'class': 'linha-check' });
+        input = el('input', { type: 'checkbox', name: c.nome });
+        input.checked = v === true || v === 'Sim';
+        linha.appendChild(input);
+        linha.appendChild(document.createTextNode(c.rotulo || c.nome));
+        f.appendChild(linha);
+        return;
+      }
+      f.appendChild(el('label', {}, (c.rotulo || c.nome) + (c.obrigatorio ? ' *' : '')));
+      if (c.tipo === 'lista') {
+        input = el('select', { name: c.nome });
+        input.appendChild(el('option', { value: '' }, '—'));
+        (c.opcoes || []).forEach(function (o) { input.appendChild(el('option', { value: o }, o)); });
+        input.value = v || '';
+      } else {
+        var tipos = { email: 'email', data: 'date', mes: 'month', inteiro: 'number', dia: 'number', percentual: 'text', moeda: 'text', moeda_sinal: 'text' };
+        input = el('input', { type: tipos[c.tipo] || 'text', name: c.nome });
+        if (c.tipo === 'dia') { input.min = 1; input.max = 31; }
+        if (c.tipo === 'inteiro') { if (c.min !== undefined) input.min = c.min; if (c.max !== undefined) input.max = c.max; }
+        if (c.tipo === 'moeda' || c.tipo === 'moeda_sinal') input.placeholder = '0,00';
+        if (c.tipo === 'percentual') input.placeholder = 'ex.: 40';
+        input.value = (v === null || v === undefined) ? '' : String(v).replace(/^(-?\d+)\.(\d+)$/, '$1,$2');
+        if (c.tipo === 'inteiro' || c.tipo === 'dia') input.value = v === '' || v === null ? '' : String(v);
+      }
+      if (c.obrigatorio) input.required = true;
+      f.appendChild(input);
+    });
+  }
+
+  function coletar() {
+    var dados = { _original: original };
+    def.campos.forEach(function (c) {
+      var i = document.querySelector('[name="' + c.nome.replace(/"/g, '\\"') + '"]');
+      dados[c.nome] = c.tipo === 'simnao' ? i.checked : i.value;
+    });
+    return dados;
+  }
+
+  function salvar() {
+    var b = document.getElementById('salvar');
+    b.disabled = true;
+    var chamada = google.script.run.withSuccessHandler(function (r) {
+      b.disabled = false;
+      if (r.ok) {
+        mostrar('ok', r.mensagem);
+        if (def.modo === 'lancamento') { montarCampos(null); }
+        else { carregarDepois(); }
+      } else {
+        mostrar('erro', (r.mensagem ? [r.mensagem] : []).concat(r.erros || []));
+        if (def.modo === 'aprovacao' && r.mensagem) carregarDepois();
+      }
+    }).withFailureHandler(function (e) { b.disabled = false; mostrar('erro', e.message); });
+    if (def.modo === 'aprovacao') chamada.processarImportados(coletarAprovacao());
+    else chamada.salvarFormulario(FORM_ID, coletar());
+  }
+
+  function carregarDepois() {
+    original = '';
+    google.script.run.withSuccessHandler(function (d) {
+      def = d;
+      if (d.modo === 'aprovacao') return montarAprovacao(d);
+      if (d.modo === 'upsert') montarSeletor(d);
+      montarCampos(d.modo === 'config' ? d.registros[0] : null);
+    }).obterFormulario(FORM_ID);
+  }
+
+  // ------------------------------------------------ aprovação de importados
+  function montarAprovacao(d) {
+    var f = document.getElementById('form');
+    f.innerHTML = '';
+    if (!d.pendentes.length) {
+      f.appendChild(el('p', {}, 'Nenhum lançamento importado aguardando aprovação.'));
+      document.getElementById('salvar').disabled = true;
+      return;
+    }
+    document.getElementById('salvar').textContent = 'Processar';
+    var t = el('table');
+    var h = el('tr');
+    ['Ação', 'Data', 'Descrição', 'Valor', 'Tipo', 'Conta/Cartão', 'Categoria', 'Centro de custo'].forEach(function (x) { h.appendChild(el('th', {}, x)); });
+    t.appendChild(h);
+    d.pendentes.forEach(function (p) {
+      var tr = el('tr', { 'data-id': p.ID });
+      var acao = el('select', { 'class': 'acao' });
+      [['aprovar', 'Aprovar'], ['descartar', 'Descartar'], ['', 'Deixar']].forEach(function (o) { acao.appendChild(el('option', { value: o[0] }, o[1])); });
+      var td = el('td'); td.appendChild(acao); tr.appendChild(td);
+      tr.appendChild(el('td', {}, p.Data));
+      tr.appendChild(el('td', {}, p['Descrição']));
+      tr.appendChild(el('td', { 'class': 'valor' }, 'R$ ' + Number(p.Valor).toFixed(2).replace('.', ',')));
+      tr.appendChild(el('td', {}, p.Tipo));
+      tr.appendChild(el('td', {}, p['Conta/Cartão']));
+      tr.appendChild(celulaLista('cat', d.categorias, p.Categoria));
+      tr.appendChild(celulaLista('cc', d.centros, p['Centro de custo']));
+      t.appendChild(tr);
+    });
+    f.appendChild(t);
+  }
+
+  function celulaLista(classe, opcoes, valor) {
+    var td = el('td');
+    var s = el('select', { 'class': classe });
+    s.appendChild(el('option', { value: '' }, '—'));
+    opcoes.forEach(function (o) { s.appendChild(el('option', { value: o }, o)); });
+    s.value = valor || '';
+    td.appendChild(s);
+    return td;
+  }
+
+  function coletarAprovacao() {
+    var r = [];
+    document.querySelectorAll('tr[data-id]').forEach(function (tr) {
+      var acao = tr.querySelector('.acao').value;
+      if (!acao) return;
+      r.push({ ID: tr.getAttribute('data-id'), acao: acao, Categoria: tr.querySelector('.cat').value, 'Centro de custo': tr.querySelector('.cc').value });
+    });
+    return r;
+  }
+
+  carregar();
+</script>
+</body>
+</html>
