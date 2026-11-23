@@ -6,6 +6,8 @@
 extratos/
 *.ofx
 *.OFX
+# exceção: exemplos fictícios usados nos testes
+!importador/exemplos/*.ofx
 saida/
 
 node_modules/
