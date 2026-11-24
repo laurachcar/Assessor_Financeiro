@@ -1,0 +1,17 @@
+{
+  "name": "assessor-financeiro-web",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "description": "Assessor Financeiro como app web: login, banco na nuvem (Supabase) e agentes de IA no servidor",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "node scripts/copiar-vendor.js",
+    "test": "node --test test/*.test.js",
+    "test:navegador": "node test/navegador.smoke.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.7.0",
+    "@supabase/supabase-js": "2.110.0"
+  }
+}
