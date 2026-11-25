@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assessor Financeiro</title>
+<meta name="description" content="Seu assessor financeiro pessoal: cadastro, painel, agente de compras e agente investidor.">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body class="sem-sessao">
+<div id="tela-login">
+  <div class="card login-caixa">
+    <h1>Assessor Financeiro</h1>
+    <p class="lema">Seu dinheiro organizado, com agentes que ajudam a comprar e a investir melhor.</p>
+    <div id="login-corpo"><p class="nota">Carregando...</p></div>
+  </div>
+</div>
+<header>
+  <div class="topo">
+    <h1>Assessor Financeiro</h1>
+    <button class="btn sec peq" id="resetar" title="Volta aos dados de exemplo">Recomeçar exemplo</button>
+  </div>
+  <nav id="abas"></nav>
+</header>
+<main id="conteudo"></main>
+<script src="vendor/supabase.js"></script>
+<script src="js/01-interface.js"></script>
+<script src="js/02-regras.js"></script>
+<script src="js/03-dados-e-cadastro.js"></script>
+<script src="js/04-paginas-buyer.js"></script>
+<script src="js/05-investimentos.js"></script>
+<script src="js/06-salvar-anexos.js"></script>
+<script src="js/07-nuvem.js"></script>
+</body>
+</html>
